@@ -10,4 +10,4 @@ Spring Boot backend
    ```bash
    CREATE DATABASE portfolio_db;
 3. **Run the PortfolioManagerApplication**: To create tables and feed initial data
-4. **All mock data is in the data.sql file located in src/main/resources/**
+4.  **All mock/demo data is centrally managed in `data.sql` located at `src/main/resources/`**  

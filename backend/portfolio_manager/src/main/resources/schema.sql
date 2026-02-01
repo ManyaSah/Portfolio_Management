@@ -1,9 +1,13 @@
-CREATE TABLE stock (
+DROP TABLE IF EXISTS price_target;
+DROP TABLE IF EXISTS stock_price;
+DROP TABLE IF EXISTS asset;
+DROP TABLE IF EXISTS stock;
+CREATE TABLE IF NOT EXISTS stock (
                        ticker VARCHAR(10) PRIMARY KEY,
                        company_name VARCHAR(100) NOT NULL
 );
 
-CREATE TABLE asset (
+CREATE TABLE IF NOT EXISTS asset (
                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
                        ticker VARCHAR(10) NOT NULL,
                        quantity INT NOT NULL,
@@ -15,7 +19,7 @@ CREATE TABLE asset (
                                ON DELETE CASCADE
 );
 
-CREATE TABLE stock_price (
+CREATE TABLE IF NOT EXISTS stock_price (
                              id BIGINT AUTO_INCREMENT PRIMARY KEY,
                              ticker VARCHAR(10) NOT NULL,
                              price_date DATE NOT NULL,
@@ -26,7 +30,7 @@ CREATE TABLE stock_price (
                                      ON DELETE CASCADE
 );
 
-CREATE TABLE price_target (
+CREATE TABLE IF NOT EXISTS price_target (
                               id BIGINT AUTO_INCREMENT PRIMARY KEY,
                               ticker VARCHAR(10) NOT NULL,
                               target_price DECIMAL(10,2) NOT NULL,
