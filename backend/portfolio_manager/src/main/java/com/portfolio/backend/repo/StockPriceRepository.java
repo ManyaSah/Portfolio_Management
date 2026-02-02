@@ -18,4 +18,15 @@ public interface StockPriceRepository extends JpaRepository<StockPrice, Long> {
 """)
     StockPrice findLatestPrice(@Param("ticker") String ticker);
 
+    // Provide the method the rest of the app expects (findTopByTickerOrderByFetchedAtDesc)
+    // We implement it as a default method that uses the existing ordered list so we don't
+    // need to change the entity or the database schema.
+    default StockPrice findTopByTickerOrderByFetchedAtDesc(String ticker) {
+        List<StockPrice> list = findByTickerOrderByPriceDate(ticker);
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        return list.get(list.size() - 1);
+    }
+
 }
