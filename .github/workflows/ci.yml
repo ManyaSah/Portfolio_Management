@@ -21,7 +21,7 @@ jobs:
           java-version: '17'
 
       - name: Build with Maven
-        run: mvn clean version
+        run: mvn clean verify
         working-directory: backend/portfolio_manager
 
       - name: Upload JAR artifact
