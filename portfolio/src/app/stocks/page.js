@@ -1,56 +1,59 @@
 "use client";
 
 import { useState } from "react";
+import { addAsset } from "../../lib/api";
+import { useRouter } from "next/navigation";
 
 export default function StocksPage() {
-  const STORAGE_KEY = "portfolioHoldings";
+  const router = useRouter();
   const stocks = [
     { ticker: "AAPL", companyName: "Apple Inc." },
     { ticker: "TSLA", companyName: "Tesla" },
     { ticker: "MSFT", companyName: "Microsoft Corporation" },
     { ticker: "GOOGL", companyName: "Alphabet Inc" },
     { ticker: "AMZN", companyName: "Amazon.com Inc" },
+    { ticker: "NFLX", companyName: "Netflix Inc" },
   ];
-
-  const getHoldings = () => {
-    if (typeof window === "undefined") return [];
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  };
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
   const [quantity, setQuantity] = useState(1);
+  const [buyPrice, setBuyPrice] = useState("");
+  const [error, setError] = useState("");
 
-  const addToPortfolio = (stock, qty) => {
-    const existing = getHoldings();
-    if (existing.some((item) => item.ticker === stock.ticker)) {
-      return;
-    }
-    const updated = [
-      ...existing,
-      {
-        id: stock.ticker,
+  const addToPortfolio = async (stock, qty, price) => {
+    try {
+      setError("");
+      await addAsset({
         ticker: stock.ticker,
-        companyName: stock.companyName,
-        quantity: qty,
-        avgPrice: 0,
-      },
-    ];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    window.dispatchEvent(new Event("portfolio-updated"));
+        quantity: parseInt(qty),
+        buyPrice: parseFloat(price) || 0,
+        buyDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+      });
+      router.push('/');
+    } catch (err) {
+      setError("Failed to add asset: " + err.message);
+      console.error("Failed to add asset", err);
+    }
   };
 
   const openAddModal = (stock) => {
     setSelectedStock(stock);
     setQuantity(1);
+    setBuyPrice("");
+    setError("");
     setIsAddOpen(true);
   };
 
-  const handleConfirmAdd = () => {
+  const handleConfirmAdd = async () => {
     if (!selectedStock) return;
     const qty = Math.max(1, Number(quantity) || 1);
-    addToPortfolio(selectedStock, qty);
+    const price = parseFloat(buyPrice) || 0;
+    if (price <= 0) {
+      setError("Please enter a valid buy price");
+      return;
+    }
+    await addToPortfolio(selectedStock, qty, price);
     setIsAddOpen(false);
   };
   return (
@@ -96,6 +99,11 @@ export default function StocksPage() {
                 ""
               )}
             </p>
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-2 rounded">
+                {error}
+              </div>
+            )}
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Quantity</label>
               <input
@@ -103,6 +111,18 @@ export default function StocksPage() {
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
+                className="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Buy Price ($)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={buyPrice}
+                onChange={(e) => setBuyPrice(e.target.value)}
+                placeholder="150.00"
                 className="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
               />
             </div>

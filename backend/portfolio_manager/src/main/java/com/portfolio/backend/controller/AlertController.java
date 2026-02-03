@@ -8,6 +8,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/alerts")
+@CrossOrigin(origins = "http://localhost:3000")
 public class AlertController {
 
     private final PriceTargetRepository priceTargetRepository;

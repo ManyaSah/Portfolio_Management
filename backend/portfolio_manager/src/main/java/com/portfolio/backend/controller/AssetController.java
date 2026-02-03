@@ -8,7 +8,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/assets")
-@CrossOrigin
+@CrossOrigin(origins = "http://localhost:3000")
 public class AssetController {
 
     private final AssetService service;
