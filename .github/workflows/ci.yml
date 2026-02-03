@@ -20,8 +20,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build with Maven
-        run: mvn clean verify
+      - name: Build backend with Maven
+        run: mvn clean verify -Dspring.profiles.active=test
         working-directory: backend/portfolio_manager
 
       - name: Upload JAR artifact
