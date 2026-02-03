@@ -4,6 +4,7 @@ import com.portfolio.backend.entity.Asset;
 import com.portfolio.backend.entity.StockPrice;
 import com.portfolio.backend.repo.AssetRepository;
 import com.portfolio.backend.repo.StockPriceRepository;
+import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class PortfolioServiceTest {
 
     @Autowired
