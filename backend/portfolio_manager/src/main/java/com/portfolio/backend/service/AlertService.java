@@ -1,9 +1,10 @@
 package com.portfolio.backend.service;
-
+import com.portfolio.backend.util.MemoryTracker;
 import com.portfolio.backend.entity.PriceTarget;
 import com.portfolio.backend.entity.StockPrice;
 import com.portfolio.backend.repo.PriceTargetRepository;
 import com.portfolio.backend.repo.StockPriceRepository;
+import com.portfolio.backend.util.MemoryTracker;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -28,6 +29,8 @@ public class AlertService {
     @Scheduled(fixedRate = 10000)
     public void checkAlerts() {
 
+        long beforeMemory = MemoryTracker.usedMemoryMB();
+
         List<PriceTarget> targets =
                 priceTargetRepository.findByTriggeredFalse();
 
@@ -37,7 +40,7 @@ public class AlertService {
                     stockPriceRepository.findLatestPrice(target.getTicker());
 
             if (latestPrice == null) {
-                continue; // no price data, skip safely
+                continue;
             }
 
             BigDecimal currentPrice = latestPrice.getClosePrice();
@@ -65,5 +68,12 @@ public class AlertService {
                 );
             }
         }
+
+        long afterMemory = MemoryTracker.usedMemoryMB();
+
+        System.out.println(
+                "AlertService memory usage (this run): "
+                        + (afterMemory - beforeMemory) + " MB"
+        );
     }
 }
