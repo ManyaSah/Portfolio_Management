@@ -37,7 +37,7 @@ public class XirrService {
         for (Asset a : assets) {
             if (!ticker.equals(a.getTicker())) continue;
             totalQuantity = totalQuantity.add(BigDecimal.valueOf(a.getQuantity()));
-            if (a.getBuyPrice() != null) {
+            if (a.getBuyPrice() != null && a.getBuyPrice().compareTo(BigDecimal.ZERO) > 0) {
                 totalCost = totalCost.add(a.getBuyPrice().multiply(BigDecimal.valueOf(a.getQuantity())));
             }
             if (a.getBuyDate() != null) {
@@ -47,20 +47,32 @@ public class XirrService {
             }
         }
 
-        if (totalQuantity.compareTo(BigDecimal.ZERO) == 0 || totalCost.compareTo(BigDecimal.ZERO) == 0 || earliestBuy == null) {
+        // Return null if insufficient data for XIRR calculation
+        if (totalQuantity.compareTo(BigDecimal.ZERO) == 0 || 
+            totalCost.compareTo(BigDecimal.ZERO) == 0 || 
+            earliestBuy == null) {
             return null;
         }
 
+        // Return null if no price data available
         StockPrice latest = priceService.getLatestPriceForTicker(ticker);
-        if (latest == null || latest.getClosePrice() == null) return null;
+        if (latest == null || latest.getClosePrice() == null) {
+            return null;
+        }
 
-        BigDecimal currentValue = latest.getClosePrice().multiply(totalQuantity);
+        try {
+            BigDecimal currentValue = latest.getClosePrice().multiply(totalQuantity);
 
-        // Simple annualized return: ((current / cost)^(1/years)) - 1
-        double years = Math.max(1.0 / 365.0, Duration.between(earliestBuy.atStartOfDay(), LocalDate.now().atStartOfDay()).toDays() / 365.0);
-        double ratio = currentValue.divide(totalCost, 10, RoundingMode.HALF_UP).doubleValue();
-        double annualized = Math.pow(ratio, 1.0 / years) - 1.0;
+            // Simple annualized return: ((current / cost)^(1/years)) - 1
+            double years = Math.max(1.0 / 365.0, Duration.between(earliestBuy.atStartOfDay(), LocalDate.now().atStartOfDay()).toDays() / 365.0);
+            double ratio = currentValue.divide(totalCost, 10, RoundingMode.HALF_UP).doubleValue();
+            double annualized = Math.pow(ratio, 1.0 / years) - 1.0;
 
-        return annualized * 100.0;
+            return annualized * 100.0;
+        } catch (Exception e) {
+            // Log and return null if calculation fails
+            System.err.println("Error calculating XIRR for ticker " + ticker + ": " + e.getMessage());
+            return null;
+        }
     }
 }

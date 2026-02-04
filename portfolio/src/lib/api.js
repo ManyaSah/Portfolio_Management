@@ -3,7 +3,8 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
 async function fetchAPI(endpoint, options = {}) {
     const res = await fetch(`${BASE_URL}/${endpoint}`, options);
     if (!res.ok) {
-        throw new Error(`API request failed with status ${res.status}`);
+        const errorText = await res.text().catch(() => '');
+        throw new Error(`API request failed with status ${res.status}${errorText ? ': ' + errorText : ''}`);
     }
     return res.json();
 }
