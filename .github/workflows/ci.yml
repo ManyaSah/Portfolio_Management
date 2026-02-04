@@ -21,7 +21,7 @@ jobs:
           java-version: '17'
 
       - name: Build backend with Maven
-        run: mvn clean verify -Dspring.profiles.active=test
+        run: mvn clean install
         working-directory: backend/portfolio_manager
 
       - name: Upload JAR artifact
