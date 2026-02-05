@@ -9,7 +9,7 @@ async function fetchAPI(endpoint, options = {}) {
     return res.json();
 }
 
-// ASSETS
+// 
 export async function getAssets() {
     return fetchAPI('assets');
 }
@@ -42,7 +42,6 @@ export async function fetchAssets() {
     return getAssets();
 }
 
-// ALERTS
 export async function getAllAlerts() {
     return fetchAPI('alerts');
 }
@@ -51,16 +50,18 @@ export async function getActiveAlerts() {
     return fetchAPI('alerts/active');
 }
 
-// PORTFOLIO
 export async function getPortfolio() {
     return fetchAPI('portfolio');
+}
+
+export async function getAiSummary() {
+    return fetchAPI('ai/summary');
 }
 
 export async function getXirr(ticker) {
     return fetchAPI(`portfolio/xirr/${ticker}`);
 }
 
-// PRICE TARGETS
 export async function getTargets() {
     return fetchAPI('targets');
 }
@@ -73,7 +74,6 @@ export async function addTarget(target) {
     });
 }
 
-// STOCK PRICES
 export async function getPriceHistory(ticker) {
     return fetchAPI(`prices/${ticker}`);
 }
@@ -86,7 +86,7 @@ export async function addPrice(ticker, price) {
     });
 }
 
-// HOME
+
 export async function getHome() {
     return fetch(`${BASE_URL.replace('/api', '')}`)
         .then(res => res.json());

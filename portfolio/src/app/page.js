@@ -3,7 +3,7 @@
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { getPortfolio, addTarget, getXirr, addAsset, sellAsset, getPriceHistory } from "../lib/api";
+import { getPortfolio, addTarget, getXirr, addAsset, sellAsset, getPriceHistory, getAiSummary } from "../lib/api";
 
 export default function Home() {
   const isDark = true;
@@ -14,6 +14,11 @@ export default function Home() {
   const [isTaxOpen, setIsTaxOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [isAlertPopupOpen, setIsAlertPopupOpen] = useState(false);
+
+  // AI summary states
+  const [aiSummary, setAiSummary] = useState("");
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState("");
 
   // XIRR states
   const [xirrData, setXirrData] = useState({});
@@ -120,6 +125,24 @@ export default function Home() {
       }
     };
     load();
+  }, []);
+
+  // Load AI summary
+  useEffect(() => {
+    const loadSummary = async () => {
+      setAiSummaryLoading(true);
+      setAiSummaryError("");
+      try {
+        const data = await getAiSummary();
+        setAiSummary(data?.summary || "");
+      } catch (e) {
+        setAiSummaryError("Failed to load AI summary");
+      } finally {
+        setAiSummaryLoading(false);
+      }
+    };
+
+    loadSummary();
   }, []);
 
   // Load XIRR data for all holdings
@@ -394,66 +417,7 @@ export default function Home() {
     >
       <Script src="https://cdn.jsdelivr.net/npm/chart.js" strategy="beforeInteractive" />
 
-      {/* <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl">
-        <div className="p-6 border-b border-slate-800">
-          <h1 className="text-2xl font-bold text-emerald-400">
-            Charlie<span className="text-white"></span>
-          </h1>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2">
-          <a
-            href="#"
-            className="flex items-center space-x-3 bg-slate-800 text-white px-4 py-3 rounded-lg transition hover:bg-slate-700"
-          >
-            <svg
-              className="w-5 h-5 text-emerald-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-              ></path>
-            </svg>
-            <span>Dashboard</span>
-          </a>
-
-          <Link
-            href="/stocks"
-            className="flex items-center space-x-3 text-slate-400 px-4 py-3 rounded-lg hover:bg-slate-800 hover:text-white transition"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7h18M3 12h18M3 17h18" />
-            </svg>
-            <span>Stocks</span>
-          </Link>
-
-          <Link
-            href="/alerts"
-            className="flex items-center space-x-3 text-slate-400 px-4 py-3 rounded-lg hover:bg-slate-800 hover:text-white transition"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            <span>Alerts</span>
-          </Link>
-        </nav>
-
-        {/* <div className="p-6 border-t border-slate-800">
-          <button
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded shadow transition font-semibold"
-            onClick={() => setIsTransactionOpen(true)}
-          >
-            + Add Transaction
-          </button>
-        </div> */}
-      {/* </aside> */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
-
         {portfolioData?.alerts?.length > 0 && (
           <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg shadow-sm m-8 mb-0">
             <div className="flex items-center mb-2">
@@ -484,6 +448,7 @@ export default function Home() {
                 <span className={`${isDark ? "text-slate-500" : "text-slate-400"} ml-2`}>All time</span>
               </p>
             </div>
+
             <div className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border`}>
               <p className={`${isDark ? "text-slate-400" : "text-slate-500"} text-sm font-medium`}>
                 Total Cost Basis
@@ -495,6 +460,7 @@ export default function Home() {
                 Initial investment
               </p>
             </div>
+
             <div className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border relative overflow-hidden`}>
               <div className={`absolute right-0 top-0 p-4 ${isDark ? "opacity-20" : "opacity-10"}`}>
                 <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 20 20">
@@ -518,6 +484,7 @@ export default function Home() {
                 Weighted average return
               </p>
             </div>
+
             <div
               className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border cursor-pointer hover:shadow-md transition`}
               onClick={() => setIsTaxOpen(true)}
@@ -530,6 +497,26 @@ export default function Home() {
                </h3>
               <p className={`${isDark ? "text-blue-400" : "text-blue-500"} text-xs mt-1 font-bold underline`}>
                 Click to Estimate Tax
+              </p>
+            </div>
+
+            <div className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border md:col-span-2`}>
+              <p className={`${isDark ? "text-slate-400" : "text-slate-500"} text-sm font-medium`}>
+                AI Portfolio Summary
+              </p>
+              <div className="mt-2 text-sm leading-relaxed">
+                {aiSummaryLoading ? (
+                  <span className={`${isDark ? "text-slate-400" : "text-slate-500"}`}>Generating summary...</span>
+                ) : aiSummaryError ? (
+                  <span className="text-red-400">{aiSummaryError}</span>
+                ) : aiSummary ? (
+                  <span className={`${isDark ? "text-slate-100" : "text-slate-700"}`}>{aiSummary}</span>
+                ) : (
+                  <span className={`${isDark ? "text-slate-400" : "text-slate-500"}`}>No summary yet.</span>
+                )}
+              </div>
+              <p className={`${isDark ? "text-slate-500" : "text-slate-400"} text-xs mt-3`}>
+                Demo AI insight. Not financial advice.
               </p>
             </div>
           </div>
