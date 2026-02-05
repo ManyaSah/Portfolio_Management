@@ -8,7 +8,8 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/targets")
-@CrossOrigin
+// @CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "*")
 public class PriceTargetController {
 
     private final PriceTargetService service;

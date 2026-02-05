@@ -11,7 +11,8 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/prices")
-@CrossOrigin
+// @CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "*")
 public class StockPriceController {
 
     private final StockPriceService historyService;

@@ -9,7 +9,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class HomeController {
 
     @GetMapping

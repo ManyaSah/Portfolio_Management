@@ -1,0 +1,14 @@
+com\portfolio\backend\controller\PriceTargetControllerTest.class
+com\portfolio\backend\repo\StockPriceRepositoryTest.class
+com\portfolio\backend\controller\StockPriceControllerTest.class
+com\portfolio\backend\repo\StockRepositoryTest.class
+com\portfolio\backend\service\PortfolioServiceTest.class
+com\portfolio\backend\controller\PortfolioControllerTest.class
+com\portfolio\backend\service\PriceServiceTest.class
+com\portfolio\backend\controller\AssetControllerTest.class
+com\portfolio\backend\controller\HomeControllerTest.class
+com\portfolio\backend\PortfolioManagerApplicationTests.class
+com\portfolio\backend\service\AssetServiceTest.class
+com\portfolio\backend\repo\AssetRepositoryTest.class
+com\portfolio\backend\controller\AlertControllerTest.class
+com\portfolio\backend\service\StockPriceServiceTest.class
