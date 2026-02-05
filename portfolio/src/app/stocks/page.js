@@ -18,6 +18,8 @@ export default function StocksPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
   const [quantity, setQuantity] = useState(1);
+  const [buyPrice, setBuyPrice] = useState(0);
+  const [buyDate, setBuyDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState("");
 
   const addToPortfolio = async (stock, qty) => {
@@ -26,8 +28,8 @@ export default function StocksPage() {
       await addAsset({
         ticker: stock.ticker,
         quantity: parseInt(qty),
-        buyPrice: 0,
-        buyDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+        buyPrice: parseFloat(buyPrice) || 0,
+        buyDate: buyDate,
       });
       router.push('/');
     } catch (err) {
@@ -39,6 +41,8 @@ export default function StocksPage() {
   const openAddModal = (stock) => {
     setSelectedStock(stock);
     setQuantity(1);
+    setBuyPrice(0);
+    setBuyDate(new Date().toISOString().split('T')[0]);
     setError("");
     setIsAddOpen(true);
   };
@@ -105,6 +109,26 @@ export default function StocksPage() {
                 step="1"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
+                className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Buy Price (USD)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={buyPrice}
+                onChange={(e) => setBuyPrice(e.target.value)}
+                className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Buy Date</label>
+              <input
+                type="date"
+                value={buyDate}
+                onChange={(e) => setBuyDate(e.target.value)}
                 className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
               />
             </div>

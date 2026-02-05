@@ -1,4 +1,4 @@
-INSERT INTO stock (ticker, company_name) VALUES
+INSERT IGNORE INTO stock (ticker, company_name) VALUES
 ('AAPL', 'Apple Inc'),
 ('TSLA', 'Tesla Inc'),
 ('AMZN', 'Amazon.com Inc'),
@@ -6,7 +6,7 @@ INSERT INTO stock (ticker, company_name) VALUES
 ('MSFT', 'Microsoft Corporation'),
 ('NFLX', 'Netflix Inc');
 
-INSERT INTO asset (ticker, quantity, buy_price, buy_date) VALUES
+INSERT IGNORE INTO asset (ticker, quantity, buy_price, buy_date) VALUES
 ('AAPL', 10, 150.00, '2024-06-01'),
 ('TSLA', 5, 220.00, '2024-07-10'),
 ('AMZN', 3, 3100.00, '2024-05-15'),
@@ -14,7 +14,7 @@ INSERT INTO asset (ticker, quantity, buy_price, buy_date) VALUES
 ('MSFT', 6, 280.00, '2024-06-20'),
 ('NFLX', 4, 420.00, '2024-09-05');
 
-INSERT INTO stock_price (ticker, price_date, close_price) VALUES
+INSERT IGNORE INTO stock_price (ticker, price_date, close_price) VALUES
 -- Apple
 ('AAPL', '2025-01-01', 170.00),
 ('AAPL', '2025-01-02', 172.50),
@@ -41,7 +41,7 @@ INSERT INTO stock_price (ticker, price_date, close_price) VALUES
 ('NFLX', '2025-01-01', 421.00);
 
 
-INSERT INTO price_target (ticker, target_price, action, triggered) VALUES
+INSERT IGNORE INTO price_target (ticker, target_price, action, triggered) VALUES
 ('AAPL', 180.00, 'SELL', false),
 ('TSLA', 270.00, 'SELL', false),
 ('AMZN', 3500.00, 'SELL', false),

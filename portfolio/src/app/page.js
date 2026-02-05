@@ -180,6 +180,18 @@ export default function Home() {
     const labels = (chartData || []).map((p) => p.priceDate);
     const values = (chartData || []).map((p) => Number(p.closePrice || 0));
 
+    // Build buy markers aligned with chart labels (null where no buy on that date)
+    const buyMarkers = (labels || []).map(() => null);
+    if (chartStock && Array.isArray(chartStock.lots)) {
+      chartStock.lots.forEach((lot) => {
+        if (!lot.buyDate) return;
+        const idx = labels.indexOf(lot.buyDate);
+        if (idx >= 0) {
+          buyMarkers[idx] = Number(lot.buyPrice || 0);
+        }
+      });
+    }
+
     const ctx = chartRef.current.getContext("2d");
     chartInstanceRef.current = new window.Chart(ctx, {
       type: "line",
@@ -193,6 +205,19 @@ export default function Home() {
             backgroundColor: "rgba(16, 185, 129, 0.1)",
             tension: 0.3,
             fill: true,
+          },
+          // Buy markers dataset (renders as points without a connecting line)
+          {
+            label: 'Buys',
+            data: buyMarkers,
+            borderColor: 'transparent',
+            backgroundColor: '#ef4444',
+            pointRadius: 6,
+            pointStyle: 'triangle',
+            showLine: false,
+            spanGaps: true,
+            tension: 0,
+            fill: false,
           },
         ],
       },

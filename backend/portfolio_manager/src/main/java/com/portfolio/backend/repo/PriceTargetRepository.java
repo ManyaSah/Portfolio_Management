@@ -6,7 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 @Repository
-public interface riceTargetRepository extends JpaRepository<PriceTarget, Long> {
+public interface PriceTargetRepository extends JpaRepository<PriceTarget, Long> {
 
     List<PriceTarget> findByTriggeredFalse();
 }
