@@ -23,6 +23,13 @@ jobs:
       - name: Build with Maven
         run: mvn clean install
         working-directory: backend/portfolio_manager
+        
+      - name: Run tests with H2 profile
+        run: mvn test
+        working-directory: backend/portfolio_manager
+        env:
+            SPRING_PROFILES_ACTIVE: test  # Activates the 'test' profile with H2 database configuration
+
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
