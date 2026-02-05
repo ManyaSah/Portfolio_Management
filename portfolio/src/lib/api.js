@@ -22,6 +22,14 @@ export async function addAsset(asset) {
     });
 }
 
+export async function sellAsset(payload) {
+    return fetchAPI('assets/sell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+}
+
 export async function deleteAsset(id) {
     const res = await fetch(`${BASE_URL}/assets/${id}`, { method: 'DELETE' });
     if (!res.ok) {

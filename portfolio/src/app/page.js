@@ -1,12 +1,13 @@
 "use client";
 
 import Script from "next/script";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { getPortfolio, addTarget, getXirr } from "../lib/api";
+import { getPortfolio, addTarget, getXirr, addAsset, sellAsset, getPriceHistory } from "../lib/api";
 
 export default function Home() {
-  const [holdings, setHoldings] = useState([]);
+  const isDark = true;
+  const [assetLots, setAssetLots] = useState([]);
   const [portfolioData, setPortfolioData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
@@ -26,6 +27,69 @@ export default function Home() {
   const [alertError, setAlertError] = useState("");
   const [alertLoading, setAlertLoading] = useState(false);
 
+  // Transaction form states
+  const [transactionTicker, setTransactionTicker] = useState("");
+  const [transactionType, setTransactionType] = useState("BUY");
+  const [transactionQty, setTransactionQty] = useState("");
+  const [transactionPrice, setTransactionPrice] = useState("");
+  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [transactionError, setTransactionError] = useState("");
+  const [transactionLoading, setTransactionLoading] = useState(false);
+
+  // Stock chart states
+  const [chartStock, setChartStock] = useState(null);
+  const [chartData, setChartData] = useState([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState("");
+  const chartRef = useRef(null);
+  const chartInstanceRef = useRef(null);
+
+  const groupedHoldings = useMemo(() => {
+    const byTicker = new Map();
+
+    for (const lot of assetLots) {
+      const key = lot.ticker;
+      if (!byTicker.has(key)) {
+        byTicker.set(key, {
+          ticker: key,
+          quantity: 0,
+          totalCost: 0,
+          marketValue: 0,
+          currentPrice: lot.currentPrice ?? null,
+          taxLiability: 0,
+          taxType: "N/A",
+          lots: [],
+        });
+      }
+
+      const agg = byTicker.get(key);
+      agg.quantity += Number(lot.quantity || 0);
+      agg.totalCost += Number(lot.cost || 0);
+      agg.marketValue += Number(lot.marketValue || 0);
+      if (agg.currentPrice == null && lot.currentPrice != null) {
+        agg.currentPrice = lot.currentPrice;
+      }
+      agg.taxLiability += Number(lot.taxLiability || 0);
+      agg.lots.push(lot);
+
+      const lotTaxType = lot.taxType || "N/A";
+      if (agg.taxType === "N/A") {
+        agg.taxType = lotTaxType;
+      } else if (agg.taxType !== lotTaxType) {
+        agg.taxType = "MIXED";
+      }
+    }
+
+    return Array.from(byTicker.values()).map((agg) => {
+      const avgPrice = agg.quantity > 0 ? agg.totalCost / agg.quantity : 0;
+      return {
+        ...agg,
+        avgPrice,
+        lots: agg.lots.sort((a, b) => (a.buyDate || "").localeCompare(b.buyDate || "")),
+      };
+    });
+  }, [assetLots]);
+
   // Load portfolio data
   useEffect(() => {
     const load = async () => {
@@ -42,11 +106,15 @@ export default function Home() {
           currentPrice: av.latestPrice,
           marketValue: av.marketValue,
           cost: av.cost,
+           taxLiability: av.taxLiability || 0,
+           taxType: av.taxType || 'N/A',
+           holdingDays: av.holdingDays || 0,
+           unrealizedGain: av.unrealizedGain || 0,
         }));
-        setHoldings(assets);
+        setAssetLots(assets);
       } catch (e) {
         console.error("Failed to load portfolio", e);
-        setHoldings([]);
+        setAssetLots([]);
       } finally {
         setIsLoading(false);
       }
@@ -57,13 +125,13 @@ export default function Home() {
   // Load XIRR data for all holdings
   useEffect(() => {
     const loadXirrData = async () => {
-      if (holdings.length === 0) return;
+      if (groupedHoldings.length === 0) return;
 
       setXirrLoading(true);
       const xirrMap = {};
       const xirrValues = [];
 
-      for (const holding of holdings) {
+      for (const holding of groupedHoldings) {
         try {
           const data = await getXirr(holding.ticker);
           xirrMap[holding.ticker] = data.xirrPercent;
@@ -80,10 +148,10 @@ export default function Home() {
 
       // Calculate portfolio-wide XIRR (weighted average)
       if (xirrValues.length > 0) {
-        const totalValue = holdings.reduce((sum, h) => sum + (h.marketValue || 0), 0);
+        const totalValue = groupedHoldings.reduce((sum, h) => sum + (h.marketValue || 0), 0);
         let weightedXirr = 0;
 
-        for (const holding of holdings) {
+        for (const holding of groupedHoldings) {
           const xirrVal = xirrMap[holding.ticker];
           if (xirrVal !== null) {
             const weight = (holding.marketValue || 0) / totalValue;
@@ -98,7 +166,56 @@ export default function Home() {
     };
 
     loadXirrData();
-  }, [holdings]);
+  }, [groupedHoldings]);
+
+  // Render chart when selected stock changes
+  useEffect(() => {
+    if (!chartStock || !chartRef.current || typeof window === "undefined") return;
+    if (!window.Chart) return;
+
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.destroy();
+    }
+
+    const labels = (chartData || []).map((p) => p.priceDate);
+    const values = (chartData || []).map((p) => Number(p.closePrice || 0));
+
+    const ctx = chartRef.current.getContext("2d");
+    chartInstanceRef.current = new window.Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: `${chartStock.ticker} Price`,
+            data: values,
+            borderColor: "#10b981",
+            backgroundColor: "rgba(16, 185, 129, 0.1)",
+            tension: 0.3,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: "rgba(148, 163, 184, 0.2)" } },
+        },
+      },
+    });
+
+    return () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+        chartInstanceRef.current = null;
+      }
+    };
+  }, [chartStock, chartData]);
 
   const formatCurrency = (value) =>
     new Intl.NumberFormat("en-US", {
@@ -121,6 +238,98 @@ export default function Home() {
     setAlertAction("SELL");
     setAlertError("");
     setIsAlertOpen(true);
+  };
+
+  const handleBuySell = (ticker, type) => {
+    setTransactionTicker(ticker);
+    setTransactionType(type);
+    setTransactionQty("");
+    setTransactionDate(new Date().toISOString().split('T')[0]);
+    setTransactionError("");
+    
+    // Get current price for the ticker from holdings
+    const holding = groupedHoldings.find(h => h.ticker === ticker);
+    const currentPrice = holding?.currentPrice || 0;
+    setTransactionPrice(currentPrice.toString());
+    
+    setIsTransactionOpen(true);
+  };
+
+  const handleSubmitTransaction = async () => {
+    if (!transactionQty || parseFloat(transactionQty) <= 0) {
+      setTransactionError("Please enter valid quantity");
+      return;
+    }
+    if (!transactionDate) {
+      setTransactionError("Please select a date");
+      return;
+    }
+
+    setTransactionLoading(true);
+    setTransactionError("");
+
+    try {
+      if (transactionType === "SELL") {
+        await sellAsset({
+          ticker: transactionTicker,
+          quantity: parseInt(transactionQty),
+        });
+      } else {
+        await addAsset({
+          ticker: transactionTicker,
+          quantity: parseInt(transactionQty),
+          buyPrice: parseFloat(transactionPrice) || 0,
+          buyDate: transactionDate,
+        });
+      }
+
+      setIsTransactionOpen(false);
+      // Reload portfolio data
+      const data = await getPortfolio();
+      setPortfolioData(data);
+      const assets = (data.assets || []).map(av => ({
+        id: av.asset.id,
+        ticker: av.asset.ticker,
+        quantity: av.asset.quantity,
+        buyPrice: av.asset.buyPrice,
+        buyDate: av.asset.buyDate,
+        currentPrice: av.latestPrice,
+        marketValue: av.marketValue,
+        cost: av.cost,
+        taxLiability: av.taxLiability || 0,
+        taxType: av.taxType || 'N/A',
+        holdingDays: av.holdingDays || 0,
+        unrealizedGain: av.unrealizedGain || 0,
+      }));
+      setAssetLots(assets);
+    } catch (err) {
+      setTransactionError("Failed to record transaction: " + err.message);
+    } finally {
+      setTransactionLoading(false);
+    }
+  };
+
+  const handleOpenChart = async (asset) => {
+    setChartStock(asset);
+    setChartLoading(true);
+    setChartError("");
+    setChartData([]);
+
+    try {
+      const data = await getPriceHistory(asset.ticker);
+      setChartData(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setChartError("Failed to load price history");
+      setChartData([]);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
+  const handleCloseChart = () => {
+    setChartStock(null);
+    setChartData([]);
+    setChartError("");
   };
 
   const handleCreateAlert = async () => {
@@ -151,10 +360,16 @@ export default function Home() {
   };
 
   return (
-    <div className="bg-slate-50 text-slate-800 font-sans h-screen flex overflow-hidden">
+    <div
+      className={`${
+        isDark
+          ? "bg-slate-950 text-slate-100"
+          : "bg-slate-50 text-slate-800"
+      } font-sans h-screen flex overflow-hidden`}
+    >
       <Script src="https://cdn.jsdelivr.net/npm/chart.js" strategy="beforeInteractive" />
 
-      <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl">
+      {/* <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl">
         <div className="p-6 border-b border-slate-800">
           <h1 className="text-2xl font-bold text-emerald-400">
             Charlie<span className="text-white"></span>
@@ -203,29 +418,16 @@ export default function Home() {
           </Link>
         </nav>
 
-        <div className="p-6 border-t border-slate-800">
+        {/* <div className="p-6 border-t border-slate-800">
           <button
             className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded shadow transition font-semibold"
             onClick={() => setIsTransactionOpen(true)}
           >
             + Add Transaction
           </button>
-        </div>
-      </aside>
-
+        </div> */}
+      {/* </aside> */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="bg-white shadow-sm h-16 flex items-center justify-between px-8 z-10">
-          <h2 className="text-xl font-bold text-slate-700">Portfolio Overview</h2>
-          <div className="flex items-center space-x-4">
-            <div className="text-right">
-              <p className="text-sm font-bold text-slate-800">Charlie Kirk</p>
-              <p className="text-xs text-slate-500">Investor</p>
-            </div>
-            <div className="h-10 w-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold">
-              CK
-            </div>
-          </div>
-        </header>
 
         {portfolioData?.alerts?.length > 0 && (
           <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg shadow-sm m-8 mb-0">
@@ -245,144 +447,254 @@ export default function Home() {
 
         <div className="flex-1 overflow-y-auto p-8 scroller">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <p className="text-slate-500 text-sm font-medium">Current Portfolio Value</p>
-              <h3 className="text-3xl font-bold text-slate-800 mt-2">
+            <div className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border`}>
+              <p className={`${isDark ? "text-slate-400" : "text-slate-500"} text-sm font-medium`}>
+                Current Portfolio Value
+              </p>
+              <h3 className={`text-3xl font-bold ${isDark ? "text-slate-100" : "text-slate-800"} mt-2`}>
                 {formatCurrency(portfolioValue)}
               </h3>
-              <p className={`text-sm mt-1 flex items-center ${totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+              <p className={`text-sm mt-1 flex items-center ${totalProfit >= 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-500') : (isDark ? 'text-red-400' : 'text-red-500')}`}>
                 <span>{totalProfit >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(totalProfit))}</span>
-                <span className="text-slate-400 ml-2">All time</span>
+                <span className={`${isDark ? "text-slate-500" : "text-slate-400"} ml-2`}>All time</span>
               </p>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <p className="text-slate-500 text-sm font-medium">Total Cost Basis</p>
-              <h3 className="text-3xl font-bold text-slate-600 mt-2">
+            <div className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border`}>
+              <p className={`${isDark ? "text-slate-400" : "text-slate-500"} text-sm font-medium`}>
+                Total Cost Basis
+              </p>
+              <h3 className={`text-3xl font-bold ${isDark ? "text-slate-100" : "text-slate-600"} mt-2`}>
                 {formatCurrency(portfolioData?.totalCost || 0)}
               </h3>
-              <p className="text-slate-400 text-sm mt-1">Initial investment</p>
+              <p className={`${isDark ? "text-slate-500" : "text-slate-400"} text-sm mt-1`}>
+                Initial investment
+              </p>
             </div>
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 relative overflow-hidden">
-              <div className="absolute right-0 top-0 p-4 opacity-10">
+            <div className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border relative overflow-hidden`}>
+              <div className={`absolute right-0 top-0 p-4 ${isDark ? "opacity-20" : "opacity-10"}`}>
                 <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"></path>
                   <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"></path>
                 </svg>
               </div>
-              <p className="text-slate-500 text-sm font-medium">Portfolio XIRR (Return)</p>
-              <h3 className="text-3xl font-bold text-blue-600 mt-2">
+              <p className={`${isDark ? "text-slate-400" : "text-slate-500"} text-sm font-medium`}>
+                Portfolio XIRR (Return)
+              </p>
+              <h3 className={`text-3xl font-bold ${isDark ? "text-blue-400" : "text-blue-600"} mt-2`}>
                 {xirrLoading ? (
-                  <span className="text-sm text-slate-500">Loading...</span>
+                  <span className={`text-sm ${isDark ? "text-slate-400" : "text-slate-500"}`}>Loading...</span>
                 ) : portfolioXirr !== null ? (
                   `${portfolioXirr.toFixed(2)}%`
                 ) : (
                   "N/A"
                 )}
               </h3>
-              <p className="text-slate-400 text-sm mt-1">Weighted average return</p>
+              <p className={`${isDark ? "text-slate-500" : "text-slate-400"} text-sm mt-1`}>
+                Weighted average return
+              </p>
             </div>
             <div
-              className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md transition"
+              className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} p-6 rounded-xl shadow-sm border cursor-pointer hover:shadow-md transition`}
               onClick={() => setIsTaxOpen(true)}
             >
-              <p className="text-slate-500 text-sm font-medium">Est. Tax Liability</p>
-              <h3 className="text-3xl font-bold text-orange-500 mt-2">$1,200</h3>
-              <p className="text-blue-500 text-xs mt-1 font-bold underline">Click to Estimate Tax</p>
+              <p className={`${isDark ? "text-slate-400" : "text-slate-500"} text-sm font-medium`}>
+                Est. Tax Liability
+              </p>
+               <h3 className={`text-3xl font-bold ${isDark ? "text-orange-400" : "text-orange-500"} mt-2`}>
+                 {formatCurrency(portfolioData?.totalTaxLiability || 0)}
+               </h3>
+              <p className={`${isDark ? "text-blue-400" : "text-blue-500"} text-xs mt-1 font-bold underline`}>
+                Click to Estimate Tax
+              </p>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8">
+          <div className={`${isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"} rounded-xl shadow-sm border p-6 mb-8`}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg text-slate-700">Performance History</h3>
-              <select className="bg-slate-50 border border-slate-300 rounded text-sm px-3 py-1">
-                <option>1 Year</option>
-              </select>
-            </div>
-            <div className="h-64 bg-slate-50 rounded flex items-center justify-center text-slate-400 border border-dashed border-slate-300">
-              <canvas id="portfolioChart" className="w-full h-full"></canvas>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="font-bold text-lg text-slate-700">Current Holdings</h3>
+              <h3 className={`font-bold text-lg ${isDark ? "text-slate-100" : "text-slate-700"}`}>Current Holdings</h3>
+              <p className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>Click a card to view price graph</p>
             </div>
             {isLoading ? (
               <div className="p-6 text-slate-500">Loading...</div>
+            ) : groupedHoldings.length === 0 ? (
+              <div className="p-6 text-slate-500">No holdings yet.</div>
             ) : (
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
-                  <tr>
-                    <th className="px-6 py-4">Ticker</th>
-                    <th className="px-6 py-4">Qty</th>
-                    <th className="px-6 py-4">Avg Price</th>
-                    <th className="px-6 py-4">Current Price</th>
-                    <th className="px-6 py-4">Market Value</th>
-                    <th className="px-6 py-4">Gain/Loss</th>
-                    <th className="px-6 py-4">XIRR</th>
-                    <th className="px-6 py-4">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="text-slate-700 text-sm divide-y divide-slate-100">
-                  {holdings.map((asset) => {
-                    const gainLoss = (asset.marketValue || 0) - (asset.cost || 0);
-                    const assetXirr = xirrData[asset.ticker];
-                    return (
-                      <tr key={asset.id || asset.ticker} className="hover:bg-slate-50 transition">
-                        <td className="px-6 py-4 font-bold">{asset.ticker}</td>
-                        <td className="px-6 py-4">{asset.quantity}</td>
-                        <td className="px-6 py-4">
-                          {formatCurrency(Number(asset.buyPrice ?? 0))}
-                        </td>
-                        <td className="px-6 py-4">
-                          {formatCurrency(Number(asset.currentPrice ?? 0))}
-                        </td>
-                        <td className="px-6 py-4 font-semibold">
-                          {formatCurrency(Number(asset.marketValue || 0))}
-                        </td>
-                        <td className={`px-6 py-4 font-semibold ${gainLoss >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                          {gainLoss >= 0 ? '+' : ''}{formatCurrency(gainLoss)}
-                        </td>
-                        <td className="px-6 py-4 font-semibold">
-                          {xirrLoading ? (
-                            <span className="text-xs text-slate-400">Loading...</span>
-                          ) : assetXirr !== undefined ? (
-                            assetXirr !== null ? (
-                              <span className={assetXirr >= 0 ? 'text-blue-600' : 'text-red-600'}>
-                                {assetXirr >= 0 ? '+' : ''}{assetXirr.toFixed(2)}%
-                              </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {groupedHoldings.map((asset) => {
+                  const gainLoss = (asset.marketValue || 0) - (asset.totalCost || 0);
+                  const assetXirr = xirrData[asset.ticker];
+                  return (
+                    <button
+                      key={asset.ticker}
+                      onClick={() => handleOpenChart(asset)}
+                      className={`${isDark ? "bg-slate-950 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:shadow-md"} text-left rounded-xl p-5 transition relative`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className={`text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>Ticker</p>
+                          <h4 className={`text-xl font-bold ${isDark ? "text-slate-100" : "text-slate-800"}`}>{asset.ticker}</h4>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded font-semibold ${
+                          asset.taxType === 'LONG_TERM' ? (isDark ? 'bg-emerald-900 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : 
+                          asset.taxType === 'SHORT_TERM' ? (isDark ? 'bg-orange-900 text-orange-300' : 'bg-orange-100 text-orange-700') : 
+                          (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')
+                        }`}>
+                          {asset.taxType === 'LONG_TERM' ? 'Long-term' : 
+                           asset.taxType === 'SHORT_TERM' ? 'Short-term' : 
+                           'N/A'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
+                        <div>
+                          <p className={`text-slate-500`}>Qty</p>
+                          <p className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-700"}`}>{asset.quantity}</p>
+                        </div>
+                        <div>
+                          <p className={`text-slate-500`}>Avg Price</p>
+                          <p className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                            {formatCurrency(Number(asset.avgPrice ?? 0))}
+                          </p>
+                        </div>
+                        <div>
+                          <p className={`text-slate-500`}>Market Value</p>
+                          <p className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                            {formatCurrency(Number(asset.marketValue || 0))}
+                          </p>
+                        </div>
+                        <div>
+                          <p className={`text-slate-500`}>Current Price</p>
+                          <p className={`font-semibold ${gainLoss >= 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-red-400' : 'text-red-600')}`}>
+                            {formatCurrency(Number(asset.currentPrice ?? 0))}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between text-xs">
+                        <div>
+                          <p className={`text-slate-500`}>XIRR</p>
+                          <p className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                            {xirrLoading ? (
+                              "Loading..."
+                            ) : assetXirr !== undefined ? (
+                              assetXirr !== null ? (
+                                `${assetXirr >= 0 ? '+' : ''}${assetXirr.toFixed(2)}%`
+                              ) : (
+                                "N/A"
+                              )
                             ) : (
-                              <span className="text-slate-400">N/A</span>
-                            )
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 space-x-2">
-                          <button className="text-emerald-500 hover:text-emerald-700 font-medium text-xs border border-emerald-200 bg-emerald-50 px-2 py-1 rounded">
-                            BUY
-                          </button>
-                          <button className="text-orange-500 hover:text-orange-700 font-medium text-xs border border-orange-200 bg-orange-50 px-2 py-1 rounded">
-                            SELL
-                          </button>
-                          <button
-                            className="text-blue-500 hover:text-blue-700 font-medium text-xs underline ml-2"
-                            onClick={() => handleSetAlert(asset.ticker)}
-                          >
-                            Set Alert
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                              "-"
+                            )}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-slate-500`}>Tax Liability</p>
+                          <p className={`font-semibold ${isDark ? "text-orange-300" : "text-orange-600"}`}>
+                            {asset.taxLiability > 0 ? formatCurrency(Number(asset.taxLiability)) : '-'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center gap-2">
+                        <span
+                          className={`${
+                            isDark
+                              ? "text-emerald-300 hover:text-emerald-200 border-emerald-900 bg-emerald-950"
+                              : "text-emerald-600 hover:text-emerald-700 border-emerald-200 bg-emerald-50"
+                          } font-medium text-xs border px-2 py-1 rounded`}
+                          onClick={(e) => { e.stopPropagation(); handleBuySell(asset.ticker, 'BUY'); }}
+                        >
+                          BUY
+                        </span>
+                        <span
+                          className={`${
+                            isDark
+                              ? "text-orange-300 hover:text-orange-200 border-orange-900 bg-orange-950"
+                              : "text-orange-600 hover:text-orange-700 border-orange-200 bg-orange-50"
+                          } font-medium text-xs border px-2 py-1 rounded`}
+                          onClick={(e) => { e.stopPropagation(); handleBuySell(asset.ticker, 'SELL'); }}
+                        >
+                          SELL
+                        </span>
+                        <span
+                          className={`${isDark ? "text-blue-300 hover:text-blue-200" : "text-blue-600 hover:text-blue-700"} font-medium text-xs underline`}
+                          onClick={(e) => { e.stopPropagation(); handleSetAlert(asset.ticker); }}
+                        >
+                          Set Alert
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 
           <div className="h-8"></div>
         </div>
       </main>
+
+      {/* Stock Price Chart Modal */}
+      <div
+        className={`${chartStock ? "" : "hidden"} fixed inset-0 bg-slate-900 bg-opacity-50 z-50 flex items-center justify-center backdrop-blur-sm`}
+      >
+        <div className="bg-white rounded-lg shadow-2xl w-[720px] max-w-[95vw] overflow-hidden">
+          <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+            <h3 className="font-bold text-slate-700">
+              {chartStock ? `${chartStock.ticker} Price Chart` : "Price Chart"}
+            </h3>
+            <button
+              onClick={handleCloseChart}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              &times;
+            </button>
+          </div>
+          <div className="p-6">
+            {chartLoading ? (
+              <div className="h-64 flex items-center justify-center text-slate-400">Loading chart...</div>
+            ) : chartError ? (
+              <div className="h-64 flex items-center justify-center text-red-500">{chartError}</div>
+            ) : chartData.length === 0 ? (
+              <div className="h-64 flex items-center justify-center text-slate-400">No price history available.</div>
+            ) : (
+              <div className="h-64">
+                <canvas ref={chartRef} className="w-full h-full"></canvas>
+              </div>
+            )}
+
+            {chartStock?.lots?.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-bold text-slate-700 mb-2">Order History</h4>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                      <tr>
+                        <th className="px-4 py-2">Buy Date</th>
+                        <th className="px-4 py-2">Qty</th>
+                        <th className="px-4 py-2">Buy Price</th>
+                        <th className="px-4 py-2">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {chartStock.lots
+                        .filter((lot) => Number(lot.buyPrice || 0) > 0 && Number(lot.cost || 0) > 0)
+                        .map((lot) => (
+                          <tr key={lot.id || `${lot.ticker}-${lot.buyDate}-${lot.quantity}`}>
+                            <td className="px-4 py-2">{lot.buyDate || "-"}</td>
+                            <td className="px-4 py-2">{lot.quantity}</td>
+                            <td className="px-4 py-2">{formatCurrency(Number(lot.buyPrice || 0))}</td>
+                            <td className="px-4 py-2">{formatCurrency(Number(lot.cost || 0))}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Alert Modal */}
       <div
@@ -472,7 +784,7 @@ export default function Home() {
       >
         <div className="bg-white rounded-lg shadow-2xl w-96 overflow-hidden transform transition-all scale-100">
           <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-            <h3 className="font-bold text-slate-700">Add Transaction</h3>
+            <h3 className="font-bold text-slate-700">Record Transaction</h3>
             <button
               onClick={() => setIsTransactionOpen(false)}
               className="text-slate-400 hover:text-slate-600"
@@ -485,44 +797,73 @@ export default function Home() {
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Stock Ticker</label>
               <input
                 type="text"
-                placeholder="e.g. MSFT"
-                className="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
+                value={transactionTicker}
+                disabled
+                className="w-full border border-slate-300 rounded px-3 py-2 bg-slate-100 text-slate-600"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label>
-                <select className="w-full border border-slate-300 rounded px-3 py-2">
-                  <option>Buy</option>
-                  <option>Sell</option>
+                <select 
+                  value={transactionType}
+                  onChange={(e) => setTransactionType(e.target.value)}
+                  className="w-full border border-slate-300 rounded px-3 py-2"
+                >
+                  <option value="BUY">Buy</option>
+                  <option value="SELL">Sell</option>
                 </select>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Qty</label>
                 <input
                   type="number"
+                  min="1"
+                   step="1"
+                  value={transactionQty}
+                  onChange={(e) => setTransactionQty(e.target.value)}
                   placeholder="10"
                   className="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
                 />
+              
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Price</label>
-              <input
-                type="number"
-                placeholder="150.00"
-                className="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
-              />
+            <div className="bg-slate-50 border border-slate-300 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-slate-600 text-sm">Current Price per Share:</span>
+                <span className="text-lg font-bold text-slate-700">
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                  }).format(parseFloat(transactionPrice) || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center border-t border-slate-300 pt-2">
+                <span className="text-slate-600 font-semibold">Total Amount:</span>
+                <span className="text-2xl font-bold text-slate-800">
+                  {transactionQty && transactionPrice 
+                    ? new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                      }).format(parseFloat(transactionQty) * parseFloat(transactionPrice))
+                    : "$0.00"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {transactionQty || 0} shares × ${parseFloat(transactionPrice || 0).toFixed(2)} per share
+              </p>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Date</label>
-              <input
-                type="date"
-                className="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-            <button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded">
-              + Add
+            {transactionError && (
+              <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded">
+                {transactionError}
+              </div>
+            )}
+            <button 
+              onClick={handleSubmitTransaction}
+              disabled={transactionLoading}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-400 text-white font-bold py-2 rounded transition"
+            >
+              {transactionLoading ? "Recording..." : "Record Transaction"}
             </button>
           </div>
         </div>
@@ -545,14 +886,42 @@ export default function Home() {
           </div>
           <div className="p-6 space-y-4">
             <p className="text-slate-600 text-sm">
-              Estimated capital gains tax based on realized profits and your tax bracket.
+               Estimated capital gains tax based on unrealized gains if you were to sell all positions today.
             </p>
-            <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded">
-              <p className="text-orange-800 font-bold text-2xl">$1,200.00</p>
-              <p className="text-orange-600 text-sm mt-1">Annual federal tax liability</p>
+           
+             <div className="space-y-3">
+               <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg">
+                 <div className="flex justify-between items-center">
+                   <span className="text-orange-700 font-semibold text-sm">Short-Term (22%)</span>
+                   <span className="text-orange-800 font-bold text-lg">
+                     {formatCurrency(portfolioData?.shortTermTax || 0)}
+                   </span>
+                 </div>
+                 <p className="text-orange-600 text-xs mt-1">Held less than 2 years</p>
+               </div>
+             
+               <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg">
+                 <div className="flex justify-between items-center">
+                   <span className="text-emerald-700 font-semibold text-sm">Long-Term (15%)</span>
+                   <span className="text-emerald-800 font-bold text-lg">
+                     {formatCurrency(portfolioData?.longTermTax || 0)}
+                   </span>
+                 </div>
+                 <p className="text-emerald-600 text-xs mt-1">Held 2+ years</p>
+               </div>
+             
+               <div className="bg-slate-100 border-t-2 border-slate-400 p-4 rounded-lg">
+                 <div className="flex justify-between items-center">
+                   <span className="text-slate-700 font-bold">Total Tax Liability</span>
+                   <span className="text-slate-900 font-bold text-2xl">
+                     {formatCurrency(portfolioData?.totalTaxLiability || 0)}
+                   </span>
+                 </div>
+               </div>
             </div>
+           
             <p className="text-slate-500 text-xs">
-              * This is an estimate. Please consult a tax professional for accurate calculations.
+               * This is an estimate based on unrealized gains. Actual tax depends on your income bracket, state taxes, and when you sell. Please consult a tax professional.
             </p>
             <button
               onClick={() => setIsTaxOpen(false)}

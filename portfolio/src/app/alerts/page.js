@@ -25,16 +25,13 @@ export default function AlertsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Price Alerts</h1>
-          <Link href="/" className="text-blue-500 hover:text-blue-700">
-            ← Back to Dashboard
-          </Link>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-4">
+        <div className="bg-slate-900 rounded-lg shadow-sm border border-slate-800 p-4 mb-4">
           <label className="flex items-center space-x-2">
             <input
               type="checkbox"
@@ -42,20 +39,20 @@ export default function AlertsPage() {
               onChange={(e) => setActiveOnly(e.target.checked)}
               className="rounded"
             />
-            <span className="text-sm">Show only active alerts</span>
+            <span className="text-sm text-slate-200">Show only active alerts</span>
           </label>
         </div>
 
         {isLoading ? (
           <div className="text-center py-8">Loading...</div>
         ) : allAlerts.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8 text-center text-slate-500">
+          <div className="bg-slate-900 rounded-lg shadow-sm border border-slate-800 p-8 text-center text-slate-400">
             No alerts found. Set alerts from your portfolio holdings.
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+          <div className="bg-slate-900 rounded-lg shadow-sm border border-slate-800 overflow-hidden">
             <table className="w-full">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-semibold">
+              <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-semibold">
                 <tr>
                   <th className="px-6 py-4 text-left">Ticker</th>
                   <th className="px-6 py-4 text-left">Target Price</th>
@@ -63,17 +60,17 @@ export default function AlertsPage() {
                   <th className="px-6 py-4 text-left">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800">
                 {allAlerts.map((alert) => (
-                  <tr key={alert.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-bold">{alert.ticker}</td>
+                  <tr key={alert.id} className="hover:bg-slate-800/60">
+                    <td className="px-6 py-4 font-bold text-slate-100">{alert.ticker}</td>
                     <td className="px-6 py-4">${alert.targetPrice}</td>
                     <td className="px-6 py-4">
                       <span
                         className={`px-2 py-1 rounded text-xs font-semibold ${
                           alert.action === "BUY"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-orange-100 text-orange-700"
+                            ? "bg-emerald-900 text-emerald-300"
+                            : "bg-orange-900 text-orange-300"
                         }`}
                       >
                         {alert.action}
@@ -81,9 +78,9 @@ export default function AlertsPage() {
                     </td>
                     <td className="px-6 py-4">
                       {alert.triggered ? (
-                        <span className="text-yellow-600 font-semibold">🔔 Triggered</span>
+                        <span className="text-yellow-300 font-semibold">🔔 Triggered</span>
                       ) : (
-                        <span className="text-slate-500">Active</span>
+                        <span className="text-slate-400">Active</span>
                       )}
                     </td>
                   </tr>
