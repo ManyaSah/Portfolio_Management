@@ -35,7 +35,10 @@ INSERT IGNORE INTO stock_price (ticker, price_date, close_price) VALUES
 
 -- Microsoft
 ('MSFT', '2025-01-01', 310.00),
-('MSFT', '2025-01-02', 312.50);
+('MSFT', '2025-01-02', 312.50),
+
+-- Netflix
+('NFLX', '2025-01-01', 421.00);
 
 
 INSERT IGNORE INTO price_target (ticker, target_price, action, triggered) VALUES
