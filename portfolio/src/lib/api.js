@@ -56,6 +56,10 @@ export async function getPortfolio() {
     return fetchAPI('portfolio');
 }
 
+export async function getStocks() {
+    return fetchAPI('stocks');
+}
+
 export async function getXirr(ticker) {
     return fetchAPI(`portfolio/xirr/${ticker}`);
 }
