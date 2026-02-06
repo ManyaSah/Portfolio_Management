@@ -45,6 +45,9 @@ export default function Home() {
   const chartRef = useRef(null);
   const chartInstanceRef = useRef(null);
 
+  // Triggered price target alerts
+  const [triggeredAlerts, setTriggeredAlerts] = useState([]);
+
   const groupedHoldings = useMemo(() => {
     const byTicker = new Map();
 
@@ -168,6 +171,43 @@ export default function Home() {
 
     loadXirrData();
   }, [groupedHoldings]);
+
+  // Check for triggered buy price targets
+  useEffect(() => {
+    if (!portfolioData || !portfolioData.priceTargets || groupedHoldings.length === 0) return;
+
+    const triggered = [];
+    const shownAlerts = JSON.parse(localStorage.getItem('shownAlerts') || '{}');
+
+    for (const target of portfolioData.priceTargets) {
+      // Only check BUY targets
+      if (target.action !== 'BUY') continue;
+      
+      const holding = groupedHoldings.find(h => h.ticker === target.ticker);
+      if (!holding) continue;
+
+      const currentPrice = Number(holding.currentPrice) || 0;
+      const targetPrice = Number(target.targetPrice) || 0;
+      const alertKey = `${target.ticker}-BUY-${target.targetPrice}`;
+
+      // BUY target triggered when price drops to or below target
+      if (currentPrice <= targetPrice && !shownAlerts[alertKey]) {
+        triggered.push({
+          ticker: target.ticker,
+          targetPrice: targetPrice,
+          currentPrice: currentPrice,
+          timestamp: new Date().toLocaleTimeString()
+        });
+        shownAlerts[alertKey] = true;
+      }
+    }
+
+    if (triggered.length > 0) {
+      localStorage.setItem('shownAlerts', JSON.stringify(shownAlerts));
+      setTriggeredAlerts(triggered);
+    }
+  }, [portfolioData, groupedHoldings]);
+
 
   // Calculate LTCG info when selling
   useEffect(() => {
@@ -1088,6 +1128,43 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Triggered Buy Target Alerts Popup */}
+      {triggeredAlerts.length > 0 && (
+        <div className="fixed top-4 right-4 z-[999] space-y-2 max-w-md">
+          {triggeredAlerts.map((alert, index) => (
+            <div
+              key={index}
+              className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 shadow-lg animate-pulse"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h4 className="font-bold text-blue-900 text-lg">
+                    🎯 Buy Target Reached!
+                  </h4>
+                  <p className="text-blue-700 text-sm mt-1">
+                    <strong>{alert.ticker}</strong> is at a great buying price
+                  </p>
+                  <p className="text-blue-600 text-xs mt-1">
+                    Target: ${alert.targetPrice.toFixed(2)} | Current: ${alert.currentPrice.toFixed(2)}
+                  </p>
+                  <p className="text-blue-500 text-xs mt-1">
+                    {alert.timestamp}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setTriggeredAlerts(triggeredAlerts.filter((_, i) => i !== index));
+                  }}
+                  className="text-blue-400 hover:text-blue-600 ml-2"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
