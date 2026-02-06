@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
-import { addAsset, getPriceHistory, getStocks } from "../../lib/api";
+import { addAsset, getLatestPrice, getPriceHistory, getStocks } from "../../lib/api";
 import { useRouter } from "next/navigation";
 
 export default function StocksPage() {
@@ -24,6 +24,10 @@ export default function StocksPage() {
   const [buyPrice, setBuyPrice] = useState(0);
   const [buyDate, setBuyDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState("");
+  /** "buy_now" = buy at current price only; "previous" = add a past purchase with custom price/date */
+  const [addMode, setAddMode] = useState("buy_now");
+  const [currentPrice, setCurrentPrice] = useState(null);
+  const [currentPriceLoading, setCurrentPriceLoading] = useState(false);
 
   useEffect(() => {
     if (!chartStock || !chartRef.current || typeof window === "undefined") return;
@@ -119,11 +123,22 @@ export default function StocksPage() {
   const addToPortfolio = async (stock, qty) => {
     try {
       setError("");
+      const isBuyNow = addMode === "buy_now";
+      const price = isBuyNow ? (currentPrice ?? 0) : (parseFloat(buyPrice) || 0);
+      const date = isBuyNow ? new Date().toISOString().split("T")[0] : buyDate;
+      if (isBuyNow && (currentPrice == null || currentPrice <= 0)) {
+        setError("Current price not available. Add a price for this stock first, or use “Add previous purchase”.");
+        return;
+      }
+      if (!isBuyNow && (price <= 0)) {
+        setError("Please enter a valid buy price.");
+        return;
+      }
       await addAsset({
         ticker: stock.ticker,
         quantity: parseInt(qty),
-        buyPrice: parseFloat(buyPrice) || 0,
-        buyDate: buyDate,
+        buyPrice: price,
+        buyDate: date,
       });
       router.push('/');
     } catch (err) {
@@ -132,13 +147,24 @@ export default function StocksPage() {
     }
   };
 
-  const openAddModal = (stock) => {
+  const openAddModal = async (stock) => {
     setSelectedStock(stock);
     setQuantity(1);
     setBuyPrice(0);
     setBuyDate(new Date().toISOString().split('T')[0]);
     setError("");
+    setAddMode("buy_now");
+    setCurrentPrice(null);
+    setCurrentPriceLoading(true);
     setIsAddOpen(true);
+    try {
+      const price = await getLatestPrice(stock.ticker);
+      setCurrentPrice(price);
+    } catch {
+      setCurrentPrice(null);
+    } finally {
+      setCurrentPriceLoading(false);
+    }
   };
 
   const handleConfirmAdd = async () => {
@@ -274,6 +300,40 @@ export default function StocksPage() {
                 {error}
               </div>
             )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase mb-2">How are you adding this?</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAddMode("buy_now")}
+                  className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
+                    addMode === "buy_now"
+                      ? "bg-emerald-600 text-white border border-emerald-500"
+                      : "bg-slate-800 text-slate-300 border border-slate-700 hover:border-slate-600"
+                  }`}
+                >
+                  Buy now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddMode("previous")}
+                  className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
+                    addMode === "previous"
+                      ? "bg-emerald-600 text-white border border-emerald-500"
+                      : "bg-slate-800 text-slate-300 border border-slate-700 hover:border-slate-600"
+                  }`}
+                >
+                  Previous purchase
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {addMode === "buy_now"
+                  ? "Use current market price (today)."
+                  : "Enter the price and date you bought at."}
+              </p>
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Quantity</label>
               <input
@@ -285,31 +345,52 @@ export default function StocksPage() {
                 className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
               />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Buy Price (USD)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={buyPrice}
-                onChange={(e) => setBuyPrice(e.target.value)}
-                className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Buy Date</label>
-              <input
-                type="date"
-                value={buyDate}
-                onChange={(e) => setBuyDate(e.target.value)}
-                className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+
+            {addMode === "buy_now" ? (
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Buy price (current)</label>
+                <div className="w-full border border-slate-700 bg-slate-800/50 text-slate-100 rounded px-3 py-2">
+                  {currentPriceLoading ? (
+                    <span className="text-slate-400">Loading…</span>
+                  ) : currentPrice != null && currentPrice > 0 ? (
+                    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(currentPrice)
+                  ) : (
+                    <span className="text-amber-400">No price data. Add a price for this ticker first, or use “Previous purchase”.</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Order will be recorded at this price for today.</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Buy price (USD)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={buyPrice}
+                    onChange={(e) => setBuyPrice(e.target.value)}
+                    className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Buy date</label>
+                  <input
+                    type="date"
+                    value={buyDate}
+                    onChange={(e) => setBuyDate(e.target.value)}
+                    className="w-full border border-slate-700 bg-slate-950 text-slate-100 rounded px-3 py-2 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </>
+            )}
+
             <button
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleConfirmAdd}
+              disabled={addMode === "buy_now" && (currentPriceLoading || currentPrice == null || currentPrice <= 0)}
             >
-              Add Stock
+              {addMode === "buy_now" ? "Buy at current price" : "Add stock"}
             </button>
           </div>
         </div>

@@ -82,6 +82,15 @@ export async function getPriceHistory(ticker) {
     return fetchAPI(`prices/${ticker}`);
 }
 
+/** Get latest (current) price for a ticker. Returns number or null if no price data. */
+export async function getLatestPrice(ticker) {
+    const history = await getPriceHistory(ticker);
+    if (!Array.isArray(history) || history.length === 0) return null;
+    const latest = history[history.length - 1];
+    const price = latest?.closePrice;
+    return price != null ? Number(price) : null;
+}
+
 export async function addPrice(ticker, price) {
     return fetchAPI('prices', {
         method: 'POST',
